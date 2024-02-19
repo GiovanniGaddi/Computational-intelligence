@@ -21,6 +21,7 @@ class RandomPlayer(Player):
 
 class MyPlayer(Player):
     def __init__(self) -> None:
+        # Mask to get only the board's edge
         self._viable_moves_mask = numpy.zeros((5,5), dtype=bool)
         self._viable_moves_mask[0, :] = True
         self._viable_moves_mask[-1, :] = True
@@ -29,6 +30,7 @@ class MyPlayer(Player):
         super().__init__()
 
     def make_move(self, game: 'Game') -> tuple[tuple[int, int], Move]:
+        # Random move based on possible actions
         possibleMoves = self._getPossibleMoves(game.get_current_player(),game.get_board())
         randomMove = random.choice(possibleMoves)
         from_pos = randomMove.coord
@@ -37,16 +39,15 @@ class MyPlayer(Player):
         return from_pos, slide
     
     def _getPossibleMoves(self, player: int, board)-> list:
-        # print('#Possible MOVES')
-        # print(board)
+
         viableMoves = ((board == -1) | (board == player)) & self._viable_moves_mask
         movesCoords = numpy.argwhere(viableMoves).tolist()
+        #map viable coords to possible actions
         movesCoords = [MoveSlides((coords[1], coords[0]), self.__getPossibleSlides(coords)) for coords in movesCoords]
-        # for move in movesCoords:
-        #     print(move)
         return movesCoords
     
     def __getPossibleSlides(self, coords)->tuple[Move]:
+        # Get possible slides given board coordinates
         if coords[0] < 0 | coords[0] > 4 | coords[1] < 0 | coords[1] > 4:
             return
         slides = []
@@ -61,9 +62,11 @@ class MyPlayer(Player):
         return tuple(slides)
 
     def _hashBoard(self, board) -> str:
+        # Create 25 character Hash from a board
         return ''.join(map(str,numpy.where(board == -1, ' ', numpy.where(board == 0, 'X', 'O')).flatten()))
     
     def _getNextState(self, from_pos: tuple[int, int], slide: Move, playerID: int, initialBoard: numpy.ndarray) -> numpy.ndarray:
+        # generate next state based on the initial board and action
         board = deepcopy(initialBoard)
         board[from_pos[1], from_pos[0]] = playerID
 
@@ -78,6 +81,7 @@ class MyPlayer(Player):
         return board
     
     def __playerWinner(self,board: numpy.ndarray, playerID: int) -> bool:
+        # Check if a player won
         vfboard = board == playerID
         return (numpy.all(vfboard, axis=1).any() or #any row
             numpy.all(vfboard, axis=0).any() or #any col
@@ -85,6 +89,7 @@ class MyPlayer(Player):
             numpy.all(numpy.diag(numpy.fliplr(vfboard)))) #second diagonal
 
     def _checkWinner(self, board: numpy.ndarray)-> int:
+        #check if any player won
         if self.__playerWinner(board, 1):
             return 1
         if self.__playerWinner(board, 0):
@@ -94,10 +99,14 @@ class MyPlayer(Player):
 class Tr_RL_Player(MyPlayer):
     def __init__(self, root: str, playerID: int = -1, expRate: float = 0.3, learningRate: float = 0.1) -> None:
         self._trajectory = list()
+        # exploration rate
         self._expRate = expRate
+        # learning rate
         self._lRate = learningRate
+
         self._root = root
         self._playerID = playerID
+        #load states from memory
         self._loadStates()
         super().__init__()
 
@@ -107,7 +116,7 @@ class Tr_RL_Player(MyPlayer):
             self._playerID = game.get_current_player()
             self._loadStates()
 
-        #append actual state
+        #append to trajectory actual state
         state = game.get_board()
         self._trajectory.append(super()._hashBoard(state))
 
@@ -131,6 +140,7 @@ class Tr_RL_Player(MyPlayer):
             max_value = float('-inf')
             for moves in possibleMoves:
                 for slide in moves.slides:
+                    #get future state based on actual board and action
                     tempState = super()._getNextState(moves.coord, slide, self._playerID, state)
                     tempStateHash = super()._hashBoard(tempState)
                     #evaluate all possible moves
@@ -178,8 +188,7 @@ class RL_Player(Tr_RL_Player):
         #append actual state
         state = game.get_board()
         self._trajectory.append(super()._hashBoard(state))
-        # print('Starting State:')
-        # print(state)
+
         #get possible moves given the player
         possibleMoves = super()._getPossibleMoves(self._playerID, state)
 
@@ -196,8 +205,6 @@ class RL_Player(Tr_RL_Player):
                     move = slide
                     stateHash = tempStateHash
         #add to trajectory the chosen next state
-        # print('Next State: ',fromPos, move)
-        # print(super()._getNextState(fromPos, move, self._playerID, state))
         self._trajectory.append(stateHash)
         return (fromPos, move)
     
@@ -212,8 +219,11 @@ class Minimax_Player(MyPlayer):
     def __init__(self, root, playerID: int = -1, minimaxDepth: int = 4, biasReduction: float = 8) -> None:
         self._root = root
         self._playerID = playerID
+        # minimax depth
         self._mmDepth = minimaxDepth
+        # evaluation scaling
         self._biasRedu = biasReduction
+        #kernel for 2D convolution
         self._evalKernel = numpy.array([[1, 1, 1], [1, 0, 1], [1, 1, 1]])
         self._loadStates()
         super().__init__()
@@ -254,8 +264,10 @@ class Minimax_Player(MyPlayer):
         if depth == 0:
             return self.__evaluate(board), tuple()
         possibleMoves = super()._getPossibleMoves((self._playerID + int(not maximizing_player))%2, board)
+        
         #initializing best move
         best_move = (possibleMoves[0].coord, possibleMoves[0].slides[0])
+
         if maximizing_player:
             max_eval = float('-inf')
             for moves in possibleMoves:
@@ -285,8 +297,10 @@ class Minimax_Player(MyPlayer):
 
     def __evaluate(self, board: numpy.ndarray) -> float:
         try:
+            #check if value already present in memory
             value = self._states[super()._hashBoard(board)]
         except KeyError:
+            #compure the 2D convolution and save the data
             value = numpy.sum(signal.convolve2d(board == self._playerID, self._evalKernel, mode= 'same', boundary= 'fill', fillvalue= False)*(board == self._playerID)/self._biasRedu)
             self._states[super()._hashBoard(board)] = value
         return value

@@ -4,7 +4,6 @@ from enum import Enum
 import numpy as np
 
 # Rules on PDF
-import sys
 
 class Move(Enum):
     '''
@@ -100,13 +99,6 @@ class Game(object):
                     self)
                 
                 ok = self.__move(from_pos, slide, self.current_player_idx)
-            printCnt = 4
-            # if printCnt >= 0:
-            #     print(f'Player {self.get_current_player():02d}', from_pos, slide)
-            #     self.print()
-            #     printCnt -=1
-            # elif printCnt < 0:
-            #     sys.exit()
             winner = self.check_winner()
             drawCnt -= 1
         return winner
